@@ -1,44 +1,66 @@
-const express = require("express");
-const nodemailer = require("nodemailer");
-const cors = require("cors");
-const bodyParser = require("body-parser");
-require("dotenv").config();
+const express = require('express');
+const mongoose = require('mongoose');
+const bodyParser = require('body-parser');
+const cors = require('cors');
 
 const app = express();
+const PORT = process.env.PORT || 5000;
+
+// Middleware
 app.use(cors());
 app.use(bodyParser.json());
-app.use(express.json());
-// 📩 Configure Nodemailer (Using Gmail SMTP)
-const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-        user: process.env.EMAIL,  // Your email
-        pass: process.env.PASSWORD // Your email password (or App Password)
-    }
+
+// MongoDB Connection
+mongoose.connect('mongodb://localhost:27017/fireguard', { useNewUrlParser: true, useUnifiedTopology: true })
+    .then(() => console.log('MongoDB connected'))
+    .catch(err => console.error(err));
+
+// Define the schema and model
+const inspectionSchema = new mongoose.Schema({
+    propertyName: String,
+    buildingType: String,
+    address: String,
+    documents: [String],
+    specialInstructions: String,
+    inspectionDate: Date,
+    inspectionTime: String,
 });
 
-// 📧 API Endpoint to Send Email
-app.post("/send-email", async (req, res) => {
-    const {to, subject, message } = req.body;
-    if (!to || !subject || !message) {
-        return res.status(400).json({ error: "Missing required fields" });
-    }
-    const mailOptions = {
-        from: process.env.EMAIL,
-        to: to,
-        subject: subject,
-        text: message
-    };
+const Inspection = mongoose.model('Inspection', inspectionSchema);
+
+// API endpoint to save the inspection request
+app.post('/api/inspections', async (req, res) => {
+    const { propertyName, buildingType, address, documents, specialInstructions, inspectionDate, inspectionTime } = req.body;
 
     try {
-        await transporter.sendMail(mailOptions);
-        res.json({ message: "Email sent successfully!" });
+        const newInspection = new Inspection({
+            propertyName,
+            buildingType,
+            address,
+            documents,
+            specialInstructions,
+            inspectionDate,
+            inspectionTime,
+        });
+
+        await newInspection.save();
+        res.status(201).send({ message: 'Inspection request saved successfully' });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: "Error sending email." });
+        res.status(500).send({ message: 'Error saving inspection request', error });
     }
 });
 
-// 🚀 Start Server
-const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// API endpoint to retrieve all inspections
+app.get('/api/inspections', async (req, res) => {
+    try {
+        const inspections = await Inspection.find();
+        res.status(200).json(inspections);
+    } catch (error) {
+        res.status(500).send({ message: 'Error retrieving inspections', error });
+    }
+});
+
+// Start the server
+app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
+});
